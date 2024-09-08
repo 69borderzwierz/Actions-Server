@@ -100,7 +100,6 @@ jobs:
             done
           }
 
-          start_spigot
           
           START_TIME=$(date +%s)
           
