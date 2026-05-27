@@ -44,47 +44,30 @@ jobs:
           echo "Authenticating ngrok..."
           ./ngrok config add-authtoken "$NGROK_AUTHTOKEN"
 
-          echo "Starting Spigot..."
-          java -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true -Xms16G -Xmx16G -jar spigot.jar nogui 2>&1 | sed '/login:/s/.*/<REDACTED>/' &
-          SPIGOT_PID=$!
-          echo "Spigot started with PID $SPIGOT_PID"
+          print_ngrok_ip() {
+            echo "Waiting for ngrok tunnel..."
+            for i in {1..20}; do
+              NGROK_URL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[]?.public_url // empty')
 
-          echo "Starting ngrok TCP tunnel..."
-          ./ngrok tcp 25565 --log=stdout > ngrok.log 2>&1 &
-          NGROK_PID=$!
-          echo "ngrok started with PID $NGROK_PID"
+              if [ -n "$NGROK_URL" ]; then
+                MINECRAFT_IP=$(echo "$NGROK_URL" | sed 's#tcp://##')
 
-          sleep 10
-          echo "ngrok tunnel info:"
-          curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[]?.public_url // empty' || true
+                echo "=================================================="
+                echo "MINECRAFT SERVER IP: $MINECRAFT_IP"
+                echo "Use this in Minecraft: $MINECRAFT_IP"
+                echo "Full ngrok URL: $NGROK_URL"
+                echo "=================================================="
 
-          commit_and_push() {
-            git config --local user.email "github-actions[bot]@users.noreply.github.com"
-            git config --local user.name "github-actions[bot]"
-            git add -A
+                return 0
+              fi
 
-            git reset -- ngrok
-            git reset -- ngrok.tgz
-            git reset -- ngrok.log
-            git reset -- logs/
-            git reset -- credentials.json
-            
-            if ! git commit -m "Auto commit every 30 seconds [no ci]"; then
-                echo "No changes to commit or commit failed"
-                return 1
-            fi
-            
-            for i in {1..3}; do
-                if git push https://x-access-token:${FINE_GRAINED_PAT}@github.com/${GITHUB_REPOSITORY}.git HEAD:playit-only --force; then
-                    echo "Push successful on attempt $i"
-                    return 0
-                else
-                    echo "Push failed on attempt $i, retrying..."
-                    git pull --rebase
-                fi
+              echo "ngrok tunnel not ready yet, retrying..."
+              sleep 3
             done
-            
-            echo "Failed to push after 3 attempts"
+
+            echo "Failed to get ngrok tunnel URL"
+            echo "ngrok log:"
+            cat ngrok.log || true
             return 1
           }
 
@@ -101,9 +84,38 @@ jobs:
             NGROK_PID=$!
             echo "ngrok started with PID $NGROK_PID"
 
-            sleep 10
-            echo "ngrok tunnel info:"
-            curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[]?.public_url // empty' || true
+            print_ngrok_ip || true
+          }
+
+          commit_and_push() {
+            git config --local user.email "github-actions[bot]@users.noreply.github.com"
+            git config --local user.name "github-actions[bot]"
+
+            git add -A
+
+            git reset -- ngrok || true
+            git reset -- ngrok.tgz || true
+            git reset -- ngrok.log || true
+            git reset -- logs/ || true
+            git reset -- credentials.json || true
+            
+            if ! git commit -m "Auto commit every 30 seconds [no ci]"; then
+              echo "No changes to commit or commit failed"
+              return 1
+            fi
+            
+            for i in {1..3}; do
+              if git push https://x-access-token:${FINE_GRAINED_PAT}@github.com/${GITHUB_REPOSITORY}.git HEAD:playit-only --force; then
+                echo "Push successful on attempt $i"
+                return 0
+              else
+                echo "Push failed on attempt $i, retrying..."
+                git pull --rebase
+              fi
+            done
+            
+            echo "Failed to push after 3 attempts"
+            return 1
           }
 
           delete_auto_commit_workflows() {
@@ -123,6 +135,7 @@ jobs:
               -H "Accept: application/vnd.github.v3+json" \
               "https://api.github.com/repos/${REPO}/actions/workflows/blank.yml/dispatches" \
               -d '{"ref":"playit-only"}'
+
             echo "New workflow run created"
           }
 
@@ -138,14 +151,18 @@ jobs:
             done
           }
 
+          start_spigot
+          start_ngrok
+
           START_TIME=$(date +%s)
 
+          # Schedule the cancellation of old workflow runs after 30 seconds
           (sleep 30 && cancel_old_workflow_runs) &
           (sleep 20 && rm -f credentials.json) &
 
           while true; do
             if ! commit_and_push; then
-                echo "Commit and push failed, continuing without stopping the workflow"
+              echo "Commit and push failed, continuing without stopping the workflow"
             fi
             
             CURRENT_TIME=$(date +%s)
@@ -180,4 +197,5 @@ jobs:
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/${{ github.repository }}/actions/workflows/blank.yml/dispatches" \
             -d '{"ref":"playit-only"}'
+
           echo "Workflow rerun triggered due to previous step failure"
