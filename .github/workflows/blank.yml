@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           fetch-tags: false
           persist-credentials: true
           token: ${{ secrets.FINE_GRAINED_PAT }}
@@ -31,19 +31,13 @@ jobs:
           distribution: "graalvm"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Add Cloudflare repository
+      - name: Install cloudflared and jq
         run: |
           sudo mkdir -p --mode=0755 /usr/share/keyrings
           curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
           echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared jammy main' | sudo tee /etc/apt/sources.list.d/cloudflared.list
           sudo apt-get update
-
-      - name: Install cloudflared
-        run: |
           sudo apt-get install -y cloudflared jq
-
-      - name: Debug - List directory contents
-        run: ls -la
 
       - name: Run Spigot and cloudflared
         if: "!contains(github.event.head_commit.message, 'Auto commit every 30 seconds [no ci]')"
@@ -58,15 +52,8 @@ jobs:
           set +e
           cd "$GITHUB_WORKSPACE"
 
-          if [ -z "$CF_TUNNEL_UUID" ]; then
-            echo "CF_TUNNEL_UUID is empty. Check secret CF_TUNNEL_UUID_1."
-            exit 1
-          fi
-
-          if [ -z "$CF_TUNNEL_UUID_CONTENT" ]; then
-            echo "CF_TUNNEL_UUID_CONTENT is empty."
-            exit 1
-          fi
+          [ -n "$CF_TUNNEL_UUID" ] || { echo "CF_TUNNEL_UUID is empty"; exit 1; }
+          [ -n "$CF_TUNNEL_UUID_CONTENT" ] || { echo "CF_TUNNEL_UUID_CONTENT is empty"; exit 1; }
 
           mkdir -p ~/.cloudflared
           echo "$CF_TUNNEL_CERT" > ~/.cloudflared/cert.pem
@@ -78,7 +65,7 @@ jobs:
 
           ingress:
             - service: tcp://localhost:25565
-          EOF
+EOF
 
           start_spigot() {
             echo "Starting Spigot..."
@@ -123,38 +110,28 @@ jobs:
             git config --local user.name "github-actions[bot]"
 
             git add -A
-
-            git reset -- tunnel-config.yml
-            git reset -- credentials.json
-            git reset -- logs/
+            git reset -- tunnel-config.yml credentials.json logs/ || true
 
             if git diff --cached --quiet; then
               echo "No changes to commit"
               return 0
             fi
 
-            if ! git commit -m "Auto commit every 30 seconds [no ci]"; then
-              echo "Commit failed"
-              return 1
-            fi
+            git commit -m "Auto commit every 30 seconds [no ci]" || return 1
 
             for i in 1 2 3; do
               if git push "https://x-access-token:${FINE_GRAINED_PAT}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main; then
-                echo "Push successful on attempt $i"
+                echo "Push successful"
                 return 0
-              else
-                echo "Push failed on attempt $i"
-                git pull --rebase || true
               fi
+              echo "Push failed attempt $i"
+              git fetch origin main --depth=1 || true
             done
 
-            echo "Failed to push after 3 attempts"
             return 1
           }
 
           create_new_workflow_run() {
-            echo "Creating new workflow run..."
-
             curl -i -X POST \
               -H "Authorization: Bearer ${FINE_GRAINED_PAT}" \
               -H "Accept: application/vnd.github+json" \
@@ -172,28 +149,10 @@ jobs:
               "https://api.github.com/repos/${REPO}/actions/runs?branch=main&status=in_progress")
 
             echo "$workflow_runs" | jq -r ".workflow_runs[] | select(.id != ${current_run_id}) | .id" | while read -r run_id; do
-              echo "Cancelling workflow run $run_id"
-
               curl -s -X POST \
                 -H "Authorization: Bearer ${FINE_GRAINED_PAT}" \
                 -H "Accept: application/vnd.github+json" \
                 "https://api.github.com/repos/${REPO}/actions/runs/${run_id}/cancel"
-            done
-          }
-
-          delete_auto_commit_workflows() {
-            workflow_runs=$(curl -s \
-              -H "Authorization: Bearer ${FINE_GRAINED_PAT}" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${REPO}/actions/runs")
-
-            echo "$workflow_runs" | jq -r '.workflow_runs[] | select(.head_commit.message | contains("Auto commit every 30 seconds")) | .id' | while read -r run_id; do
-              echo "Deleting workflow run $run_id"
-
-              curl -s -X DELETE \
-                -H "Authorization: Bearer ${FINE_GRAINED_PAT}" \
-                -H "Accept: application/vnd.github+json" \
-                "https://api.github.com/repos/${REPO}/actions/runs/${run_id}"
             done
           }
 
@@ -206,24 +165,15 @@ jobs:
 
           while true; do
             commit_and_push || echo "Commit/push failed, continuing"
-            delete_auto_commit_workflows || true
 
             CURRENT_TIME=$(date +%s)
             ELAPSED_TIME=$((CURRENT_TIME - START_TIME))
 
             if ! kill -0 "$SPIGOT_PID" 2>/dev/null; then
-              echo "Spigot stopped. Restarting..."
               start_spigot
             fi
 
-            if ! kill -0 "$CLOUDFLARED_PID" 2>/dev/null; then
-              echo "Cloudflare Tunnel stopped."
-              create_new_workflow_run
-              exit 0
-            fi
-
-            if [ "$ELAPSED_TIME" -ge 18000 ]; then
-              echo "Workflow has been running for 5 hours."
+            if ! kill -0 "$CLOUDFLARED_PID" 2>/dev/null || [ "$ELAPSED_TIME" -ge 18000 ]; then
               create_new_workflow_run
               exit 0
             fi
@@ -243,5 +193,3 @@ jobs:
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/repos/${REPO}/actions/workflows/CI.yml/dispatches" \
             -d '{"ref":"main"}'
-
-          echo "Workflow rerun triggered due to previous step failure"
