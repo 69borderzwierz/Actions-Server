@@ -1,0 +1,31 @@
+# ======================================================== #
+#                         CarryMe                          #
+# ======================================================== #
+
+# Main plugin settings.
+settings:
+  # Maximum distance allowed to send a carry request (in blocks)
+  max-distance: 5.0
+  # How long a carry request stays pending before it expires (in seconds)
+  request-expiration-seconds: 20
+  # Automatically drop carried players when the carrier sneaks
+  drop-on-sneak: true
+  # Plugin prefix used in admin messages
+  prefix: "&8[&bCarryMe&8] "
+
+# Command aliases for the built-in Spanish commands.
+command-aliases:
+  # Example:
+  # cargar:
+  #   - carry
+  #   - shoulder
+  carryme:
+    - carryme
+  cargar:
+    - carry
+  aceptar:
+    - accept
+  rechazar:
+    - reject
+  soltar:
+    - drop
