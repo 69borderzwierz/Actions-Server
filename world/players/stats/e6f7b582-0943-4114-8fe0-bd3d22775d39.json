@@ -1,32 +1,46 @@
 {
   "stats": {
     "minecraft:picked_up": {
-      "minecraft:wheat_seeds": 1,
+      "minecraft:leaf_litter": 114,
+      "minecraft:dirt": 734,
+      "minecraft:wheat_seeds": 8,
       "minecraft:leather": 3,
       "minecraft:beef": 3
     },
     "minecraft:custom": {
-      "minecraft:time_since_rest": 12000,
-      "minecraft:walk_one_cm": 5034,
+      "minecraft:time_since_rest": 4724,
+      "minecraft:walk_one_cm": 35191,
       "minecraft:mob_kills": 2,
-      "minecraft:play_time": 12000,
-      "minecraft:damage_dealt": 200,
-      "minecraft:jump": 79,
-      "minecraft:time_since_death": 12000,
-      "minecraft:sprint_one_cm": 12961,
-      "minecraft:total_world_time": 12000,
-      "minecraft:fly_one_cm": 152452,
-      "minecraft:crouch_one_cm": 44,
+      "minecraft:damage_taken": 20,
+      "minecraft:damage_dealt": 245,
+      "minecraft:play_time": 17679,
+      "minecraft:jump": 103,
+      "minecraft:time_since_death": 4505,
+      "minecraft:sprint_one_cm": 17898,
+      "minecraft:fall_one_cm": 953,
+      "minecraft:total_world_time": 17679,
+      "minecraft:fly_one_cm": 159488,
       "minecraft:walk_on_water_one_cm": 773,
-      "minecraft:sneak_time": 72
+      "minecraft:crouch_one_cm": 187,
+      "minecraft:sneak_time": 111,
+      "minecraft:deaths": 1
     },
     "minecraft:used": {
       "minecraft:water_bucket": 3,
       "minecraft:netherite_sword": 2,
-      "minecraft:dried_ghast": 1
+      "minecraft:netherite_shovel": 979,
+      "minecraft:dried_ghast": 1,
+      "minecraft:dirt": 18
     },
     "minecraft:killed": {
       "minecraft:cow": 2
+    },
+    "minecraft:mined": {
+      "minecraft:short_grass": 17,
+      "minecraft:tall_grass": 4,
+      "minecraft:dirt": 340,
+      "minecraft:leaf_litter": 2,
+      "minecraft:grass_block": 623
     }
   },
   "DataVersion": 4790
