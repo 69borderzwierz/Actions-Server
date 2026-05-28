@@ -1,0 +1,33 @@
+{
+  "stats": {
+    "minecraft:picked_up": {
+      "minecraft:wheat_seeds": 1,
+      "minecraft:leather": 3,
+      "minecraft:beef": 3
+    },
+    "minecraft:custom": {
+      "minecraft:time_since_rest": 6000,
+      "minecraft:walk_one_cm": 4844,
+      "minecraft:mob_kills": 2,
+      "minecraft:play_time": 6000,
+      "minecraft:damage_dealt": 200,
+      "minecraft:jump": 73,
+      "minecraft:time_since_death": 6000,
+      "minecraft:sprint_one_cm": 12179,
+      "minecraft:total_world_time": 6000,
+      "minecraft:fly_one_cm": 80472,
+      "minecraft:crouch_one_cm": 44,
+      "minecraft:walk_on_water_one_cm": 773,
+      "minecraft:sneak_time": 41
+    },
+    "minecraft:used": {
+      "minecraft:water_bucket": 3,
+      "minecraft:netherite_sword": 2,
+      "minecraft:dried_ghast": 1
+    },
+    "minecraft:killed": {
+      "minecraft:cow": 2
+    }
+  },
+  "DataVersion": 4790
+}
