@@ -6,19 +6,19 @@
       "minecraft:beef": 3
     },
     "minecraft:custom": {
-      "minecraft:time_since_rest": 6000,
-      "minecraft:walk_one_cm": 4844,
+      "minecraft:time_since_rest": 12000,
+      "minecraft:walk_one_cm": 5034,
       "minecraft:mob_kills": 2,
-      "minecraft:play_time": 6000,
+      "minecraft:play_time": 12000,
       "minecraft:damage_dealt": 200,
-      "minecraft:jump": 73,
-      "minecraft:time_since_death": 6000,
-      "minecraft:sprint_one_cm": 12179,
-      "minecraft:total_world_time": 6000,
-      "minecraft:fly_one_cm": 80472,
+      "minecraft:jump": 79,
+      "minecraft:time_since_death": 12000,
+      "minecraft:sprint_one_cm": 12961,
+      "minecraft:total_world_time": 12000,
+      "minecraft:fly_one_cm": 152452,
       "minecraft:crouch_one_cm": 44,
       "minecraft:walk_on_water_one_cm": 773,
-      "minecraft:sneak_time": 41
+      "minecraft:sneak_time": 72
     },
     "minecraft:used": {
       "minecraft:water_bucket": 3,
