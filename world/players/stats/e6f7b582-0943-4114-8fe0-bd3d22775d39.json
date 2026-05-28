@@ -1,29 +1,29 @@
 {
   "stats": {
+    "minecraft:custom": {
+      "minecraft:time_since_rest": 22724,
+      "minecraft:walk_one_cm": 36257,
+      "minecraft:mob_kills": 2,
+      "minecraft:damage_taken": 20,
+      "minecraft:damage_dealt": 245,
+      "minecraft:play_time": 35679,
+      "minecraft:jump": 104,
+      "minecraft:time_since_death": 22505,
+      "minecraft:sprint_one_cm": 17943,
+      "minecraft:fall_one_cm": 953,
+      "minecraft:total_world_time": 35679,
+      "minecraft:fly_one_cm": 164154,
+      "minecraft:walk_on_water_one_cm": 773,
+      "minecraft:crouch_one_cm": 187,
+      "minecraft:sneak_time": 111,
+      "minecraft:deaths": 1
+    },
     "minecraft:picked_up": {
       "minecraft:leaf_litter": 114,
       "minecraft:dirt": 734,
       "minecraft:wheat_seeds": 8,
       "minecraft:leather": 3,
       "minecraft:beef": 3
-    },
-    "minecraft:custom": {
-      "minecraft:time_since_rest": 16724,
-      "minecraft:walk_one_cm": 36205,
-      "minecraft:mob_kills": 2,
-      "minecraft:damage_taken": 20,
-      "minecraft:damage_dealt": 245,
-      "minecraft:play_time": 29679,
-      "minecraft:jump": 104,
-      "minecraft:time_since_death": 16505,
-      "minecraft:sprint_one_cm": 17943,
-      "minecraft:fall_one_cm": 953,
-      "minecraft:total_world_time": 29679,
-      "minecraft:fly_one_cm": 164154,
-      "minecraft:walk_on_water_one_cm": 773,
-      "minecraft:crouch_one_cm": 187,
-      "minecraft:sneak_time": 111,
-      "minecraft:deaths": 1
     },
     "minecraft:used": {
       "minecraft:water_bucket": 3,
