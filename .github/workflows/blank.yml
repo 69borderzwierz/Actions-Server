@@ -9,6 +9,10 @@ on:
   schedule:
     - cron: '0 */5 * * *'  # Run every 5 hours
 
+concurrency:
+  group: actions-server-playit-only
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -27,12 +31,16 @@ jobs:
       - name: Debug - List directory contents
         run: ls -la
 
-      - name: Run Spigot and ngrok with 30-second commits and workflow deletion
+      - name: Run Spigot and ngrok, then edit Discord message
         if: "!contains(github.event.head_commit.message, 'Auto commit every 30 seconds')"
         env:
           FINE_GRAINED_PAT: ${{ secrets.FINE_GRAINED_PAT }}
           REPO: ${{ github.repository }}
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
+
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL_ID: "1509718036360335392"
+          DISCORD_MESSAGE_ID: "1509718172046196896"
         run: |
           cd $GITHUB_WORKSPACE
 
@@ -43,6 +51,39 @@ jobs:
 
           echo "Authenticating ngrok..."
           ./ngrok config add-authtoken "$NGROK_AUTHTOKEN"
+
+          update_discord_message() {
+            SERVER_IP="$1"
+
+            if [ -z "$DISCORD_BOT_TOKEN" ]; then
+              echo "DISCORD_BOT_TOKEN is missing; skipping Discord update."
+              return 0
+            fi
+
+            if [ -z "$DISCORD_CHANNEL_ID" ] || [ -z "$DISCORD_MESSAGE_ID" ]; then
+              echo "Discord channel/message ID missing; skipping Discord update."
+              return 0
+            fi
+
+            MESSAGE_CONTENT="🎮 Minecraft server IP: ${SERVER_IP}"
+
+            echo "Updating Discord message with Minecraft IP..."
+
+            RESPONSE_CODE=$(curl -s -o discord_response.json -w "%{http_code}" \
+              -X PATCH "https://discord.com/api/v10/channels/${DISCORD_CHANNEL_ID}/messages/${DISCORD_MESSAGE_ID}" \
+              -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data "$(jq -nc --arg content "$MESSAGE_CONTENT" '{content: $content}')")
+
+            echo "Discord API HTTP status: $RESPONSE_CODE"
+
+            if [ "$RESPONSE_CODE" -lt 200 ] || [ "$RESPONSE_CODE" -ge 300 ]; then
+              echo "Discord update failed:"
+              cat discord_response.json || true
+            else
+              echo "Discord message updated successfully."
+            fi
+          }
 
           print_ngrok_ip() {
             echo "Waiting for ngrok tunnel..."
@@ -57,6 +98,8 @@ jobs:
                 echo "Use this in Minecraft: $MINECRAFT_IP"
                 echo "Full ngrok URL: $NGROK_URL"
                 echo "=================================================="
+
+                update_discord_message "$MINECRAFT_IP"
 
                 return 0
               fi
@@ -96,6 +139,7 @@ jobs:
             git reset -- ngrok || true
             git reset -- ngrok.tgz || true
             git reset -- ngrok.log || true
+            git reset -- discord_response.json || true
             git reset -- logs/ || true
             git reset -- credentials.json || true
             
@@ -110,24 +154,12 @@ jobs:
                 return 0
               else
                 echo "Push failed on attempt $i, retrying..."
-                git pull --rebase
+                git pull --rebase || true
               fi
             done
             
             echo "Failed to push after 3 attempts"
             return 1
-          }
-
-          delete_auto_commit_workflows() {
-            workflow_ids=$(curl -s -H "Authorization: token $FINE_GRAINED_PAT" \
-              "https://api.github.com/repos/${REPO}/actions/runs" | \
-              jq '.workflow_runs[] | select(.head_commit.message | contains("Auto commit every 30 seconds [no ci]")) | .id')
-
-            for id in $workflow_ids; do
-              echo "Deleting workflow run $id"
-              curl -s -X DELETE -H "Authorization: token $FINE_GRAINED_PAT" \
-                "https://api.github.com/repos/${REPO}/actions/runs/$id"
-            done
           }
 
           create_new_workflow_run() {
@@ -139,25 +171,11 @@ jobs:
             echo "New workflow run created"
           }
 
-          cancel_old_workflow_runs() {
-            current_run_id=$GITHUB_RUN_ID
-            workflow_runs=$(curl -s -H "Authorization: token $FINE_GRAINED_PAT" \
-              "https://api.github.com/repos/${REPO}/actions/runs?branch=playit-only&status=in_progress")
-            
-            echo "$workflow_runs" | jq -r ".workflow_runs[] | select(.id != $current_run_id) | .id" | while read -r run_id; do
-              echo "Cancelling workflow run $run_id"
-              curl -s -X POST -H "Authorization: token $FINE_GRAINED_PAT" \
-                "https://api.github.com/repos/${REPO}/actions/runs/$run_id/cancel"
-            done
-          }
-
           start_spigot
           start_ngrok
 
           START_TIME=$(date +%s)
 
-          # Schedule the cancellation of old workflow runs after 30 seconds
-          (sleep 30 && cancel_old_workflow_runs) &
           (sleep 20 && rm -f credentials.json) &
 
           while true; do
