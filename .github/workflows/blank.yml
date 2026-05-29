@@ -7,7 +7,7 @@ on:
     branches: [ "playit-only" ]
   workflow_dispatch:
   schedule:
-    - cron: '0 */5 * * *'  # Run every 5 hours
+    - cron: '0 */5 * * *'
 
 concurrency:
   group: actions-server-playit-only
@@ -31,103 +31,115 @@ jobs:
       - name: Debug - List directory contents
         run: ls -la
 
-      - name: Run Spigot and ngrok, then edit Discord message
-        if: "!contains(github.event.head_commit.message, 'Auto commit every 30 seconds')"
+      - name: Run Minecraft server with playit
+        if: ${{ !contains(github.event.head_commit.message, 'Auto commit every 30 seconds') }}
         env:
           FINE_GRAINED_PAT: ${{ secrets.FINE_GRAINED_PAT }}
           REPO: ${{ github.repository }}
-          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
-
-          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-          DISCORD_CHANNEL_ID: "1509718036360335392"
-          DISCORD_MESSAGE_ID: "1509718172046196896"
+          PLAYIT_SECRET: ${{ secrets.PLAYIT_SECRET }}
         run: |
-          cd $GITHUB_WORKSPACE
+          cd "$GITHUB_WORKSPACE"
 
-          echo "Installing ngrok..."
-          curl -sSL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz -o ngrok.tgz
-          tar -xzf ngrok.tgz
-          chmod +x ngrok
+          echo "Preparing Minecraft server..."
+          echo "eula=true" > eula.txt
 
-          echo "Authenticating ngrok..."
-          ./ngrok config add-authtoken "$NGROK_AUTHTOKEN"
+          if [ ! -f server.properties ]; then
+            touch server.properties
+          fi
 
-          update_discord_message() {
-            SERVER_IP="$1"
+          sed -i '/^server-port=/d' server.properties || true
+          sed -i '/^server-ip=/d' server.properties || true
+          sed -i '/^enable-status=/d' server.properties || true
+          sed -i '/^query.port=/d' server.properties || true
 
-            if [ -z "$DISCORD_BOT_TOKEN" ]; then
-              echo "DISCORD_BOT_TOKEN is missing; skipping Discord update."
+          echo "server-port=25565" >> server.properties
+          echo "server-ip=" >> server.properties
+          echo "enable-status=true" >> server.properties
+          echo "query.port=25565" >> server.properties
+
+          echo "Preparing playit..."
+
+          if [ ! -f playit-linux-amd64 ]; then
+            echo "playit-linux-amd64 not found, downloading latest..."
+            wget -O playit-linux-amd64 https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-amd64
+          fi
+
+          chmod +x playit-linux-amd64
+
+          if [ -z "$PLAYIT_SECRET" ]; then
+            echo "ERROR: PLAYIT_SECRET is missing."
+            exit 1
+          fi
+
+          echo "$PLAYIT_SECRET" > playit.toml
+          chmod 600 playit.toml
+
+          find_server_jar() {
+            if [ -f "spigot.jar" ]; then
+              echo "spigot.jar"
               return 0
             fi
 
-            if [ -z "$DISCORD_CHANNEL_ID" ] || [ -z "$DISCORD_MESSAGE_ID" ]; then
-              echo "Discord channel/message ID missing; skipping Discord update."
-              return 0
+            JAR_FILE=$(find . -maxdepth 1 -name "*.jar" | head -n 1 | sed 's#^\./##')
+
+            if [ -z "$JAR_FILE" ]; then
+              echo "ERROR: No .jar file found in repo root!" >&2
+              exit 1
             fi
 
-            MESSAGE_CONTENT="🎮 Minecraft server IP: ${SERVER_IP}"
-
-            echo "Updating Discord message with Minecraft IP..."
-
-            RESPONSE_CODE=$(curl -s -o discord_response.json -w "%{http_code}" \
-              -X PATCH "https://discord.com/api/v10/channels/${DISCORD_CHANNEL_ID}/messages/${DISCORD_MESSAGE_ID}" \
-              -H "Authorization: ${DISCORD_BOT_TOKEN}" \
-              -H "Content-Type: application/json" \
-              --data "$(jq -nc --arg content "$MESSAGE_CONTENT" '{content: $content}')")
-
-            echo "Discord API HTTP status: $RESPONSE_CODE"
-
-            if [ "$RESPONSE_CODE" -lt 200 ] || [ "$RESPONSE_CODE" -ge 300 ]; then
-              echo "Discord update failed:"
-              cat discord_response.json || true
-            else
-              echo "Discord message updated successfully."
-            fi
+            echo "$JAR_FILE"
           }
 
-          print_ngrok_ip() {
-            echo "Waiting for ngrok tunnel..."
-            for i in {1..20}; do
-              NGROK_URL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[]?.public_url // empty')
+          start_minecraft() {
+            SERVER_JAR=$(find_server_jar)
 
-              if [ -n "$NGROK_URL" ]; then
-                MINECRAFT_IP=$(echo "$NGROK_URL" | sed 's#tcp://##')
+            echo "Starting Minecraft server using jar: $SERVER_JAR"
 
-                echo "=================================================="
-                echo "MINECRAFT SERVER IP: $MINECRAFT_IP"
-                echo "Use this in Minecraft: $MINECRAFT_IP"
-                echo "Full ngrok URL: $NGROK_URL"
-                echo "=================================================="
+            java -XX:+UseG1GC \
+              -XX:+ParallelRefProcEnabled \
+              -XX:MaxGCPauseMillis=200 \
+              -XX:+UnlockExperimentalVMOptions \
+              -XX:+DisableExplicitGC \
+              -XX:+AlwaysPreTouch \
+              -XX:G1NewSizePercent=30 \
+              -XX:G1MaxNewSizePercent=40 \
+              -XX:G1HeapRegionSize=8M \
+              -XX:G1ReservePercent=20 \
+              -XX:G1HeapWastePercent=5 \
+              -XX:G1MixedGCCountTarget=4 \
+              -XX:InitiatingHeapOccupancyPercent=15 \
+              -XX:G1MixedGCLiveThresholdPercent=90 \
+              -XX:G1RSetUpdatingPauseTimePercent=5 \
+              -XX:SurvivorRatio=32 \
+              -XX:+PerfDisableSharedMem \
+              -XX:MaxTenuringThreshold=1 \
+              -Dusing.aikars.flags=https://mcflags.emc.gs \
+              -Daikars.new.flags=true \
+              -Xms2G \
+              -Xmx6G \
+              -jar "$SERVER_JAR" nogui 2>&1 | sed '/login:/s/.*/<REDACTED>/' | tee server-live.log &
 
-                update_discord_message "$MINECRAFT_IP"
-
-                return 0
-              fi
-
-              echo "ngrok tunnel not ready yet, retrying..."
-              sleep 3
-            done
-
-            echo "Failed to get ngrok tunnel URL"
-            echo "ngrok log:"
-            cat ngrok.log || true
-            return 1
+            SERVER_PID=$!
+            echo "Minecraft server started with PID $SERVER_PID"
           }
 
-          start_spigot() {
-            echo "Starting Spigot..."
-            java -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true -Xms16G -Xmx16G -jar spigot.jar nogui 2>&1 | sed '/login:/s/.*/<REDACTED>/' &
-            SPIGOT_PID=$!
-            echo "Spigot started with PID $SPIGOT_PID"
-          }
+          start_playit() {
+            echo "Starting playit using playit.toml from PLAYIT_SECRET..."
 
-          start_ngrok() {
-            echo "Starting ngrok TCP tunnel..."
-            ./ngrok tcp 25565 --log=stdout > ngrok.log 2>&1 &
-            NGROK_PID=$!
-            echo "ngrok started with PID $NGROK_PID"
+            ./playit-linux-amd64 2>&1 | sed '/login:/s/.*/<REDACTED>/' | tee playit.log &
 
-            print_ngrok_ip || true
+            PLAYIT_PID=$!
+            echo "playit started with PID $PLAYIT_PID"
+
+            sleep 15
+
+            echo "=================================================="
+            echo "PLAYIT LOGS:"
+            tail -n 80 playit.log || true
+            echo "=================================================="
+            echo "Make sure your playit tunnel points to:"
+            echo "127.0.0.1:25565"
+            echo "=================================================="
           }
 
           commit_and_push() {
@@ -136,18 +148,18 @@ jobs:
 
             git add -A
 
-            git reset -- ngrok || true
-            git reset -- ngrok.tgz || true
-            git reset -- ngrok.log || true
-            git reset -- discord_response.json || true
-            git reset -- logs/ || true
+            git reset -- playit.toml || true
+            git reset -- playit.log || true
+            git reset -- server-live.log || true
+            git reset -- tunnel-config.yml || true
             git reset -- credentials.json || true
-            
+            git reset -- logs/ || true
+
             if ! git commit -m "Auto commit every 30 seconds [no ci]"; then
               echo "No changes to commit or commit failed"
               return 1
             fi
-            
+
             for i in {1..3}; do
               if git push https://x-access-token:${FINE_GRAINED_PAT}@github.com/${GITHUB_REPOSITORY}.git HEAD:playit-only --force; then
                 echo "Push successful on attempt $i"
@@ -157,7 +169,7 @@ jobs:
                 git pull --rebase || true
               fi
             done
-            
+
             echo "Failed to push after 3 attempts"
             return 1
           }
@@ -171,38 +183,44 @@ jobs:
             echo "New workflow run created"
           }
 
-          start_spigot
-          start_ngrok
+          start_minecraft
+          sleep 20
+          start_playit
 
           START_TIME=$(date +%s)
-
-          (sleep 20 && rm -f credentials.json) &
 
           while true; do
             if ! commit_and_push; then
               echo "Commit and push failed, continuing without stopping the workflow"
             fi
-            
+
             CURRENT_TIME=$(date +%s)
             ELAPSED_TIME=$((CURRENT_TIME - START_TIME))
-            
-            if ! kill -0 $SPIGOT_PID 2>/dev/null; then
-              echo "Spigot process has stopped. Restarting Spigot..."
-              start_spigot
+
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo "Minecraft server stopped. Restarting..."
+              start_minecraft
+              sleep 20
             fi
 
-            if ! kill -0 $NGROK_PID 2>/dev/null || [ $ELAPSED_TIME -ge 18000 ]; then
-              if ! kill -0 $NGROK_PID 2>/dev/null; then
-                echo "ngrok tunnel process has stopped."
-              else
-                echo "Workflow has been running for 5 hours."
-              fi
+            if ! kill -0 "$PLAYIT_PID" 2>/dev/null; then
+              echo "playit stopped. Restarting..."
+              start_playit
+            fi
 
+            if [ "$ELAPSED_TIME" -ge 18000 ]; then
+              echo "Workflow has been running for 5 hours."
               echo "Creating new workflow run and exiting current one."
               create_new_workflow_run
               exit 0
             fi
-            
+
+            echo "Last server logs:"
+            tail -n 20 server-live.log || true
+
+            echo "Last playit logs:"
+            tail -n 20 playit.log || true
+
             sleep 30
           done
 
