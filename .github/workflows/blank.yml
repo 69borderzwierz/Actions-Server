@@ -71,7 +71,7 @@ jobs:
 
             RESPONSE_CODE=$(curl -s -o discord_response.json -w "%{http_code}" \
               -X PATCH "https://discord.com/api/v10/channels/${DISCORD_CHANNEL_ID}/messages/${DISCORD_MESSAGE_ID}" \
-              -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
+              -H "Authorization: ${DISCORD_BOT_TOKEN}" \
               -H "Content-Type: application/json" \
               --data "$(jq -nc --arg content "$MESSAGE_CONTENT" '{content: $content}')")
 
